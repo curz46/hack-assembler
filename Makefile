@@ -8,3 +8,6 @@ bin/hasm: $(OBJ)
 
 out/%.o: src/%.c
 	gcc -std=c99 -g3 $(CFLAGS) $(CPPFLAGS) $(INCLUDE) -c -o $@ $<
+
+install:
+	cp bin/hasm $(PREFIX)/bin
