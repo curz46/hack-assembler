@@ -1,0 +1,12 @@
+(START)
+    D=5
+    @10
+    M=D+A
+    @R0
+    M=15
+    @R1
+    M=10
+    @myvar
+    M=2
+    @START
+    0;JMP
