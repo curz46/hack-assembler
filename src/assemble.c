@@ -1,4 +1,5 @@
 #include "util.h"
+#include "debug.h"
 #include "assemble.h"
 
 #include <math.h>
@@ -9,9 +10,11 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-#define THROW(index, msg) { \
-    printf("Parse error on L%i: " msg, index); \
-    return -1; }
+int current_line;
+
+#define THROW(msg, ...) { \
+    printf("error: Parse error on L%i: " msg "\n", current_line, ## __VA_ARGS__); \
+    exit(-1); }
 
 const int INITIAL_CAPACITY = 10;
 const int CAPACITY_STEP    = 10;
@@ -102,12 +105,12 @@ char* encode_dest(char* dest) {
     if (strcontains(dest, "A"))    return "100";
     if (strcontains(dest, "D"))    return "010";
     if (strcontains(dest, "M"))    return "001";
-    return "000"; //throw syntax err
+    THROW("Unrecognised destination '%s'", dest);
 }
 
 char* encode_comp(char* comp) {
     int length = strlen(comp);
-    if (length == 0) return "0101010"; //syntax err
+    if (length == 0) THROW("Empty computation");
     if (length == 1) {
         char val = comp[0];
         switch (val) {
@@ -116,7 +119,7 @@ char* encode_comp(char* comp) {
             case 'D': return "0001100";
             case 'A': return "0110000";
             case 'M': return "1110000";
-            default:  return "0101010"; //syntax err
+            default:  THROW("Bad computation value '%c'", val);
         }
     }
     if (length == 2) {
@@ -129,16 +132,16 @@ char* encode_comp(char* comp) {
                     case 'D': return "0001111";
                     case 'A': return "0110011";
                     case 'M': return "1110011";
-                    default:  return "0101010"; //syntax err
+                    default:  THROW("Bad computation '%s'", comp);
                 }
             case '~':
                 switch (val) {
                     case 'D': return "0001101";
                     case 'A': return "0110001";
                     case 'M': return "1110001";
-                    default:  return "0101010"; //syntax err
+                    default:  THROW("Bad computation '%s'", comp);
                 }
-            default: return "0101010"; //syntax err
+            default: THROW("Unknown operation '%c'", op);
         }
     }
     if (length == 3) {
@@ -152,7 +155,7 @@ char* encode_comp(char* comp) {
                 if (a == 'D' && b == 'A') return "0000010";
                 if (a == 'M' && b == '1') return "1110111";
                 if (a == 'D' && b == 'M') return "1000010";
-                return "0101010"; //syntax err
+                THROW("Bad computation '%s'", comp);
             case '-':
                 if (a == 'D' && b == '1') return "0001110";
                 if (a == 'A' && b == '1') return "0110010";
@@ -161,23 +164,23 @@ char* encode_comp(char* comp) {
                 if (a == 'M' && b == '1') return "1110010";
                 if (a == 'D' && b == 'M') return "1010011";
                 if (a == 'M' && b == 'D') return "1000111";
-                return "0101010"; //syntax err
+                THROW("Bad computation '%s'", comp);
             case 'V':
                 if (a == 'D' && b == 'A') return "0010101";
                 if (a == 'A' && b == 'D') return "0010101";
                 if (a == 'D' && b == 'M') return "1010101";
                 if (a == 'M' && b == 'D') return "1010101";
-                return "0101010"; //syntax err
+                THROW("Bad computation '%s'", comp);
             case '^':
                 if (a == 'D' && b == 'A') return "0000000";
                 if (a == 'A' && b == 'D') return "0000000";
                 if (a == 'D' && b == 'M') return "1000000";
                 if (a == 'M' && b == 'D') return "1000000";
-                return "0101010"; //syntax err
-            default: return "0101010"; //syntax err
+                THROW("Bad computation '%s'", comp);
+            default: THROW("Unknown operation '%c'", op);
         }
     }
-    return "0101010"; //syntax err
+    THROW("Bad computation '%s'", comp);
 }
 
 char* encode_jump(char* jump) {
@@ -190,7 +193,7 @@ char* encode_jump(char* jump) {
     if (strcmp(jump, "JNE") == 0)  return "101";
     if (strcmp(jump, "JLE") == 0)  return "110";
     if (strcmp(jump, "JMP") == 0)  return "111";
-    return "000"; // syntax err
+    THROW("Unrecognised jump '%s'", jump);
 }
 
 symbol_t put_symbol(context_t* context, char* name, word_t address) {
@@ -260,30 +263,36 @@ int assemble(FILE* input, FILE* output) {
 
     put_predefined_symbols(&context);
 
+    int written_lines = 0;
+
     for (int i = 0; i < length; i++) {
+        current_line = i + 1;
+        
         char* line = lines[i];
         // remove whitespace
         char* inst = strstrip(line, "\n\t\r ");
-        if (strlen(inst) == 0) THROW(i, "empty inst");
+        if (strlen(inst) == 0) THROW("Empty instruction");
         if (inst[0] == '@') {
             // A-type instruction
             char* location = strtok(inst, "@"); //remove @
-            if (strlen(inst) == 0) THROW(i, "bad A-type operand");
+            if (strlen(inst) == 0) THROW("Empty A-type instruction");
             if (isdigit(location[0])) {
                 //address
                 word_t index = atoi(location);
                 char* binary = itobin(index, 15);
                 fprintf(output, "0%s\n", binary);
+                written_lines++;
 
-                printf("@%i (%s)\n", index, binary);
+                DEBUG(2, "@%i (%s)\n", index, binary);
             } else {
                 //symbol
                 strupper(location); // make lowercase
                 symbol_t symbol = get_symbol(&context, location);
                 char* binary    = itobin(symbol.address, 15);
                 fprintf(output, "0%s\n", binary);
+                written_lines++;
 
-                printf("@%s (%i=%s)\n", location, symbol.address, binary);
+                DEBUG(2, "@%s (%i=%s)\n", location, symbol.address, binary);
             }
         } else if (inst[0] == '(') {
             // Label
@@ -296,7 +305,7 @@ int assemble(FILE* input, FILE* output) {
             word_t address = i + 1;
             put_symbol(&context, label, address);
 
-            printf("New label '%s' @ %i\n", label, address);
+            DEBUG(2, "New label '%s' @ %i\n", label, address);
         } else {
             // C-type instruction
             bool has_dest = strstr(inst, "=") != NULL;
@@ -322,7 +331,7 @@ int assemble(FILE* input, FILE* output) {
                 jump_bits = "000"; // default
             } else {
                 char* comp = strtok(inst, ";");
-                char* jump = strtok(inst, "\0");
+                char* jump = strtok(NULL, "\0");
 
                 dest_bits = "000";
                 comp_bits = encode_comp(comp);
@@ -330,9 +339,13 @@ int assemble(FILE* input, FILE* output) {
             }
 
             fprintf(output, "111%s%s%s\n", comp_bits, dest_bits, jump_bits);
-            printf("wrote C-type: 111%s%s%s\n", comp_bits, dest_bits, jump_bits);
+            written_lines++;
+
+            DEBUG(2, "wrote C-type: 111%s%s%s\n", comp_bits, dest_bits, jump_bits);
         }
     }
 
     fflush(output);
+
+    return written_lines;
 }
