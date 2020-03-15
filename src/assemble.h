@@ -6,8 +6,9 @@
 /*
  * Assemble a Hack-asm program. `file` should point to a file containing Hack
  * assembly. The resultant Hack machine code will be written to `output`.
- * A return value of 0 means that the program was assembled successfully, while
- * anything else implies an error occurred.
+ * The number of lines written to `output` is returned. In the event of
+ * a syntax error, the function will write an error message to stdout
+ * and call exit.
  */
 int assemble(FILE* input, FILE* output);
 
